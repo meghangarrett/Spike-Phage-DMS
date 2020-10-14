@@ -1,0 +1,43 @@
+{
+    "output_dir" : "/fh/fast/overbaugh_j/PhIP/Meghan-Spike-Phage-DMS/pipeline_runs/Analysis-Archive-10-13-20/",
+
+    "samples" : "sample_metadata.csv",
+
+    "seq_dir" : {
+        "200512_M03100_0568_000000000-CV8GD" : "NGS/200512_M03100_0568_000000000-CV8GD/",
+        "200518_M03100_0571_000000000-J342Y" : "NGS/200518_M03100_0571_000000000-J342Y/",
+        "200615_M04866_0376_000000000-CVJRG" : "NGS/200615_M04866_0376_000000000-CVJRG/",
+        "200713_D00300_0996_BHFFKJBCX3" : "NGS/200713_D00300_0996_BHFFKJBCX3/",
+        "200713_D00300_0996_BHFFKJBCX3-input" : "NGS/200713_D00300_0996_BHFFKJBCX3-input/",
+        "200721_M04866_038" : "NGS/200721_M04866_038/",
+        "200806_M03100_0598_000000000-J6TJW" : "NGS/200806_M03100_0598_000000000-J6TJW/",
+        "200924_M04866_0411_000000000-JB35D" : "NGS/200924_M04866_0411_000000000-JB35D/"
+    },
+
+    "references" : {
+        "spike" : "peptide_metadata.csv"
+    },
+
+    "read_length" : {
+        "200512_M03100_0568_000000000-CV8GD" : 125,
+        "200518_M03100_0571_000000000-J342Y" : 125,
+        "200615_M04866_0376_000000000-CVJRG" : 125,        
+        "200713_D00300_0996_BHFFKJBCX3" : 125,
+        "200713_D00300_0996_BHFFKJBCX3-input" : 125,
+        "200721_M04866_038" : 125,
+        "200806_M03100_0598_000000000-J6TJW" : 125,
+        "200924_M04866_0411_000000000-JB35D" : 125
+    },
+
+    "tile_length" : {
+        "spike" : 93
+    },
+
+    "num_mm" : 0,
+
+    "counts_matrix_prefix" : "10-13-20-",
+    
+    "tech_rep_agg_func" : "mean",
+
+    "fastq_stream_func" : "zcat"
+}
