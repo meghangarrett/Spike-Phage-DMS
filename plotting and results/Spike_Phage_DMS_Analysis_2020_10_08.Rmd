@@ -1,0 +1,1266 @@
+---
+title: "Spike Phage-DMS analysis for manuscript"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Description of code
+This code was written by Meghan Garrett to generate plots for the manuscript "High resolution profiling of pathways of escape for SARS-CoV-2 spike-binding antibodies" by Garrett et al. The required file for this analysis is a curated .csv file containing the enrichment values and scaled differential selection values from Phage-DMS experiments with either COVID patient plasma or healthy serum. 
+
+
+## Import relevant packages
+```{r}
+library(tidyverse)
+library(ggpubr)
+library(corrr)
+library(cowplot)
+library(scales)
+library(rstatix)
+library(coin)
+```
+
+## Import and reshape data
+```{r}
+master <-read_csv("Curated_Samples_Phage_DMS_Analysis.csv")
+```
+Need to get rid of patient 19C and all healthy samples
+
+
+
+Then, need to make sure the "Loc" is actually the correct locus number. Need to add 685 onto the S2 numbers in order to make them correct (because they start the number at 1, which isn't correct)
+```{r}
+master <- master %>% mutate(Correct_Loc = ifelse(Protein == "S2", Loc + 685, Loc))
+```
+
+Also need to make a column that has the sample timepoint and participant ID together
+```{r}
+#First make a column with just the sample day
+master <- master %>% mutate(sample_day = case_when(patient_status == "conv outpatient 30d" ~ "30d", patient_status == "conv outpatient 60d" ~ "60d"))
+
+#then concatenate them together
+master$participant_timepoint = paste(master$participant_ID, master$sample_day, sep=", ")
+```
+
+Need to join the table with correlation between biological replicates to the master table
+```{r}
+corr_table <- read_csv("sample_correlation.csv")
+
+master <- left_join(master, corr_table)
+```
+Need to get rid of patient 19C and all healthy samples
+
+```{r}
+master <- master %>%
+  filter(participant_ID != "19C") %>%
+  filter(patient_status != "healthy adult")
+```
+
+
+
+Need to reorder the factor "Participant_ID" so that it is the desired order
+```{r}
+master$participant_ID <- factor(master$participant_ID, levels = c("3C", "4C", "5C", "6C", "7C", "10C", "11C", "15C", "17C", "20C", "21C", "22C", "23C", "25C", "35C"))
+
+corr_table$participant_ID <- factor(corr_table$participant_ID, levels = c("3C", "4C", "5C", "6C", "7C", "8C", "10C", "11C", "15C", "17C", "20C", "21C", "22C", "23C", "25C", "27C", "32C", "35C"))
+```
+
+Also need to reorder the amino acids in the desired order
+```{r}
+master$aa_sub <- factor(master$aa_sub, levels = c("G", "P", "A", "I", "L", "V", "F", "W", "Y", "M", "C", "S", "T", "N", "Q", "H", "K", "R", "D", "E"))
+```
+
+Define a color palette for each participant. These were taken from "http://medialab.github.io/iwanthue/"
+```{r}
+Color_ID <- c("3C" = "#e0366f","4C" = "#5eba48", "5C" = "#7c5cd1","6C" = "#adb73d", "7C" = "#6ca2da", "8C" = "#9c5f2c", "10C" = "#ca4583", "11C" = "#5abe80", "15C" = "#c781e2", "17C" = "#d89a34", "20C" = "#d05629", "21C" = "#4dbfb7", "22C" = "#e58f72", "23C" = "#378053", "25C" = "#8c4f9a", "27C" = "#cb4aaf", "32C" = "#6c943e", "35C" = "#da85b6")
+
+```
+
+
+## Now, generate plots
+
+**Plotting the range of correlation between biological replicate experiments**
+
+```{r}
+plot <- corr_table %>% ggplot(aes(x = patient_status, y=replicate_correlation, color = participant_ID, shape = patient_status)) +
+  geom_hline(yintercept=0.5, linetype="dashed") +
+  geom_jitter(size=3, width=0.1) +
+  theme_classic(base_size = 14) +
+  expand_limits(y=c(0,1)) +
+  xlab("") + 
+  ylab("Pearson correlation (R) between biological replicates of a sample") +
+  labs(shape = "Sample type", color = "Patient/Volunteer ID") +
+  scale_shape(labels=c("30 day p.s.o.","60 day p.s.o.")) +
+  scale_x_discrete(labels = c("30 day p.s.o.", "60 day p.s.o.")) +
+  scale_color_manual(values = Color_ID) 
+
+dir.create("correlation_matrix") # Folder to save plots into
+dir <- "correlation_matrix/"
+
+plot_name <- paste("correlation_matrix/biological_replicates_correlation.jpg")
+ggsave(plot_name, plot, width = 8, height = 8)
+
+print(plot)
+```
+
+
+**PLOTTING CORRELATION BETWEEN PAIRED SAMPLES - enrichment**
+
+Get correlation matrix between paired samples vs unpaired samples. This plots a dotplot matrix with the correlations between all combinations.
+```{r}
+
+#make table wider with a unique column for each participant sample
+master_corr <- master %>% 
+  select(peptide_id, participant_timepoint, enrichment) %>% 
+  pivot_wider(names_from = participant_timepoint, values_from = enrichment) %>%
+  select(-peptide_id) %>%  
+  select(str_sort(peek_vars())) 
+
+corr_matrix <- master_corr %>% correlate() %>% shave() %>% print()
+
+plot <- corr_matrix %>% rplot()
+
+dir <- "correlation_matrix/"
+
+plot_name <- paste("correlation_matrix/enrichment_paired_correlation_matrix.jpg")
+ggsave(plot_name, plot, width = 10, height = 10)
+
+```
+
+Now, plot correlations between paired and unpaired samples in two columns.
+```{r}
+#Need to label each comparison as either between a paired or unparied sample. This searches to see if the first few letters in each participant column match each other, and creates a new column describing them as either paired (the correlation between two timepoints of the same participant) or unpaired (the correlation between random samples)
+corr_table <- corr_matrix %>% 
+  stretch() %>% 
+  mutate(pair = if_else(substring(x, 1,3) == substring(y, 1, 3), "paired", "unpaired"))
+
+# Remove NA columns (columns where two of the same samples are compared to each other)
+corr_table <- corr_table %>% filter(r != "NA") %>% print()
+
+#Now plot two columns with data points comparing paired and unpaired data
+dp <- corr_table %>% ggplot(aes(x=pair, y=r)) +
+  geom_boxplot(width=.6) +
+  geom_jitter(position=position_jitter(0.2))+
+  theme_classic(base_size = 14)+
+  theme(legend.position = "none")  +
+  xlab("") +
+  ylab("Pearson Correlation (R)") + 
+  stat_compare_means(label.x=1.4, label.y=1)
+
+dir <- "correlation_matrix/"
+
+plot_name <- paste("correlation_matrix/enrichment_paired_correlation.jpg")
+ggsave(plot_name, dp, width = 6, height = 8)
+```
+
+Get the median correlation values from each plot
+```{r}
+corr_table %>% group_by(pair) %>% summarise(median = median(r)) %>% print()
+```
+
+Now, plot the relationship between paired correlation values and the sample's correlation btwn biological replicates
+```{r}
+replicate_corr_table <- master %>% 
+  filter(patient_status != "healthy adult") %>% 
+  select(participant_timepoint, replicate_correlation, patient_status, participant_ID, sample_day) %>%
+  unique() 
+```
+Rearrange the table to have each replicate with its paired correlation coefficient
+```{r}
+table_x <- corr_table %>% filter(pair == "paired") %>% select(-y, participant_timepoint = x)
+
+table_y <- corr_table %>% filter(pair == "paired") %>% select(-x, participant_timepoint = y)
+
+table <- bind_rows(table_x, table_y) %>% left_join(replicate_corr_table)
+
+
+```
+Now, plot
+```{r}
+plot <- table %>% ggplot(aes(x=r, y=replicate_correlation)) +
+  geom_point(aes(shape = sample_day, color=participant_ID), size=3) +
+  scale_color_manual(values = Color_ID) + 
+  geom_smooth(method='lm', color="black", se=FALSE, size=1) +
+  theme_classic(base_size = 14) +
+  stat_cor() + 
+  xlab("Correlation (R) between paired samples") + 
+  ylab("Correlation (R) between biological replicates of a sample") +
+  labs(shape = "Sample timepoint", color = "Patient ID") +
+  scale_shape(labels=c("30 day p.s.o.","60 day p.s.o."))
+  
+
+dir <- "correlation_matrix/"
+
+plot_name <- paste("correlation_matrix/paired_correlation_vs_replicate_correlation.jpg")
+ggsave(plot_name, plot, width = 8, height = 6)
+
+```
+
+
+
+**Plot average enrichment**
+Plot WT enrichment values as overlayed line plots and facet by patient status
+```{r}
+
+ID.labs <- c("30 days p.s.o", "60 days p.s.o.")
+names(ID.labs) <- c("conv outpatient 30d", "conv outpatient 60d")
+
+plota <- master %>% 
+  filter(Protein != "S1D614G") %>% 
+  filter(patient_status == "conv outpatient 30d") %>%
+  filter(is_wt == TRUE) %>%
+  ggplot( aes(x=Correct_Loc, y=enrichment, color=factor(participant_ID))) + 
+    geom_line(alpha=0.8) + 
+    theme_classic(base_size = 20) +
+    theme(legend.position = "none", plot.margin = unit(c(0, 0, 0, 0), "cm"), strip.background = element_blank(), strip.text.x = element_text(face="bold", size = 20), panel.border = element_rect(colour = "black", fill=NA, size=1)) +
+    facet_wrap(~patient_status, ncol=1, labeller = labeller(patient_status = ID.labs)) +
+  xlab("") +
+  ylab("")+
+  ylim(0,80) +
+  scale_color_manual(values = Color_ID) +
+  annotate("rect", xmin = 245, xmax = 285, ymin = 0, ymax =80,
+           alpha = .2,fill = "grey") +
+  annotate("rect", xmin = 470, xmax = 510, ymin = 0, ymax = 80,
+           alpha = .2,fill = "grey") +
+  annotate("rect", xmin = 540, xmax = 580, ymin = 0, ymax = 80,
+           alpha = .2,fill = "grey") +
+  annotate("rect", xmin = 615, xmax = 650, ymin = 0, ymax = 80,
+           alpha = .2,fill = "grey") +
+  annotate("rect", xmin = 800, xmax = 840, ymin = 0, ymax = 80,
+           alpha = .2,fill = "grey") + 
+  annotate("rect", xmin = 1135, xmax = 1195, ymin = 0, ymax = 80,
+           alpha = .2,fill = "grey") +
+  scale_x_continuous(breaks=c(1,100,200,300,400,500,600,700,800,900,1000,1100, 1200), expand = c(0, 0)) + 
+  guides(color = guide_legend(override.aes = list(size = 2)))
+
+plotb <- master %>% 
+  filter(Protein != "S1D614G") %>% 
+  filter(patient_status == "conv outpatient 60d") %>%
+  filter(is_wt == TRUE) %>%
+  ggplot( aes(x=Correct_Loc, y=enrichment, color=factor(participant_ID))) + 
+    geom_line(alpha=0.8) + 
+    theme_classic(base_size = 20) +
+    theme(legend.position = "none", plot.margin = unit(c(0, 0, 0, 0), "cm"), strip.background = element_blank(), strip.text.x = element_text(face="bold", size = 20), panel.border = element_rect(colour = "black", fill=NA, size=1)) +
+    facet_wrap(~patient_status, ncol=1, labeller = labeller(patient_status = ID.labs)) +
+  xlab("") +
+  ylab("") +
+  ylim(0,80)+
+  scale_color_manual(values = Color_ID)+
+  annotate("rect", xmin = 245, xmax = 285, ymin = 0, ymax =80,
+           alpha = .2,fill = "grey") +
+  annotate("rect", xmin = 470, xmax = 510, ymin = 0, ymax = 80,
+           alpha = .2,fill = "grey") +
+  annotate("rect", xmin = 540, xmax = 580, ymin = 0, ymax = 80,
+           alpha = .2,fill = "grey") +
+  annotate("rect", xmin = 615, xmax = 650, ymin = 0, ymax = 80,
+           alpha = .2,fill = "grey") +
+  annotate("rect", xmin = 800, xmax = 840, ymin = 0, ymax = 80,
+           alpha = .2,fill = "grey") + 
+  annotate("rect", xmin = 1135, xmax = 1195, ymin = 0, ymax = 80,
+           alpha = .2,fill = "grey") +
+  scale_x_continuous(breaks=c(1,100,200,300,400,500,600,700,800,900,1000,1100, 1200), expand = c(0, 0)) + 
+  guides(color = guide_legend(override.aes = list(size = 2)))
+
+#first combine the COVID patient plots
+plot <- plot_grid(plota, plotb, align = "v", nrow = 2)
+
+#Annotate the plot with x axis and y axis labels
+plot <- annotate_figure(plot, bottom = text_grob("SARS-CoV-2 S Protein Position", size = 20), left = text_grob("Enrichment of WT Peptides", size = 18, rot = 90))
+
+#Get legend
+legend <- get_legend(plota + theme(legend.position="right") + labs(color = "Patient ID"))
+
+#Add legend to plot
+plot <- plot_grid(plot, legend, rel_widths = c(3, .4), align ="hv")
+
+
+ggsave("enrichment_patient_groups_line.jpg", plot, width = 24, height = 10)
+
+```
+
+
+Now plot the entire enrichment data as a heatmap
+
+```{r}
+
+ID.labs <- c("30 days p.s.o.", "60 days p.s.o.")
+names(ID.labs) <- c("conv outpatient 30d", "conv outpatient 60d")
+
+plota <- master %>% 
+  filter(Protein != "S1D614G") %>% 
+  filter(patient_status == "conv outpatient 30d") %>%
+  filter(is_wt == TRUE) %>%
+  ggplot( aes(x=Correct_Loc, y=fct_rev(participant_ID), fill=enrichment)) + 
+    geom_tile() +
+    facet_wrap(~patient_status, ncol=1, labeller = labeller(patient_status = ID.labs)) +
+    scale_fill_gradient2(low="red", mid="white", high="darkblue", limits=c(0,120), na.value ="white") +
+  theme_classic(base_size = 14) +
+  theme(legend.position = "none", plot.margin = unit(c(0.5, 0.5, 0.5, 0.5), "cm"), axis.title.x=element_blank(), strip.background = element_blank(), strip.text.x = element_text(face="bold", size = 14), panel.border = element_rect(colour = "black", fill=NA, size=1)) +
+    xlab("") +
+    ylab("")+
+  labs(fill = "Enrichment of \n WT peptides\n") +
+  scale_x_continuous(breaks=c(1,100,200,300,400,500,600,700,800,900,1000,1100, 1200), expand = c(0, 0)) 
+
+plotb <- master %>% 
+  filter(Protein != "S1D614G") %>% 
+  filter(patient_status == "conv outpatient 60d") %>%
+  filter(is_wt == TRUE) %>%
+    ggplot( aes(x=Correct_Loc, y=fct_rev(participant_ID), fill=enrichment)) + 
+    geom_tile() +
+    facet_wrap(~patient_status, ncol=1, labeller = labeller(patient_status = ID.labs)) +
+    scale_fill_gradient2(low="red", mid="white", high="darkblue", limits=c(0,120), na.value ="white") +
+  theme_classic(base_size = 14) +
+  theme(legend.position = "none", plot.margin = unit(c(0.5, 0.5, 0.5, 0.5), "cm"), axis.title.x=element_blank(), strip.background = element_blank(), strip.text.x = element_text(face="bold", size = 14), panel.border = element_rect(colour = "black", fill=NA, size=1)) +
+    xlab("") +
+    ylab("")+
+  scale_x_continuous(breaks=c(1,100,200,300,400,500,600,700,800,900,1000,1100, 1200), expand = c(0, 0)) 
+
+#first combine the COVID patient plots
+plot <- plot_grid(plota, plotb, align = "v", nrow = 2)
+
+#Make legend, then add  
+legend <- get_legend(plota + theme(legend.position="right"))
+
+#Annotate the plot with x axis and y axis labels
+plot <- annotate_figure(plot, bottom = text_grob("          SARS-CoV-2 S Protein Position", size = 14), left = text_grob("Patient ID", size = 14, rot = 90))
+
+#Add legend to plot
+plot <- plot_grid(plot, legend, rel_widths = c(3, .4), align ="hv")
+
+ggsave("enrichment_patient_groups_heatmap.jpg", plot, width = 20, height = 10)
+
+
+```
+
+
+
+**PLOTTING SCALED DIFF SELECTION HEATMAPS**
+
+Plot the scaled diff selection with a heatmap.
+
+**Make a facet-ed heatmap with only samples of interest**
+Fusion peptide, patient samples, scaled diff sel
+```{r}
+dir.create("scaled_diff_select_plots")
+dir <- "scaled_diff_select_plots/"
+
+ID.labs <- c("30 days p.s.o.", "60 days p.s.o.")
+names(ID.labs) <- c("conv outpatient 30d", "conv outpatient 60d")
+
+ plot1 <- master %>% 
+    filter(Protein != "S1D614G") %>%
+    filter(participant_ID %in% c("3C", "7C","10C", "21C")) %>%
+    filter(Correct_Loc %in% 800:840) %>%
+    ggplot( aes(x=Correct_Loc, y=aa_sub, fill=scaled_diff_sel, width=.90, height=.90)) + 
+  geom_tile() +
+  geom_point(aes(size=is_wt), stroke = 0) +
+  scale_size_manual(values=c(0, 2)) +
+  scale_fill_gradientn(colours = c("red","white","darkblue"), values = rescale(c(-360,0,100)), guide = "colorbar", limits=c(-360,100), na.value ="lightgrey") + 
+  labs(x="SARS-CoV-2 S Protein Position", y="AA Substitution", fill = "Scaled differential \nselection value\n") +
+  theme_bw(base_size=16) +
+  facet_grid(patient_status ~ participant_ID, labeller = labeller(patient_status = ID.labs)) +
+  theme(plot.margin = unit(c(-0.5, 0, 0, 0), "cm"), strip.background = element_blank(), strip.text.x = element_blank(), strip.text.y = element_text(face = "bold", size = 16), legend.title.align=0.5, panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+    rotate_x_text(angle=45) +
+   guides(size = FALSE) + 
+   scale_x_continuous(breaks = seq(800, 840, by = 5), expand = c(0.02,0.02)) 
+
+ plot_name <- paste(dir, "FP_region_patients_scaleddiffsel.jpg", sep = "")
+  
+  ggsave(plot_name, plot1, width = 20, height = 8)
+```
+Now make an enrichment plot for the selected patient samples within the FP region
+```{r}
+plot2 <- master %>% 
+  filter(Protein != "S1D614G") %>% 
+  filter(participant_ID %in% c("3C", "7C","10C", "21C")) %>%
+  filter(is_wt == TRUE) %>%
+  filter(Correct_Loc %in% 800:840) %>%
+  ggplot( aes(x=Correct_Loc, y=enrichment, color=participant_ID, linetype=sample_day)) + 
+  geom_line(alpha=0.8) + 
+  theme_bw(base_size = 16) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  facet_wrap(~participant_ID, nrow=1) +
+  ylab("Enrichment of WT peptides") +
+  labs(linetype = "Sample timepoint") +
+  ylim(-8,80) +
+  scale_color_manual(values = Color_ID)  +
+  guides(color = FALSE) +
+  theme(plot.margin = unit(c(0, 0, 0, 0), "cm"), strip.background = element_blank(), strip.text.x = element_text(face="bold", size = 20), legend.title.align=0.5, panel.border = element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(), axis.title.x=element_blank()) +
+   scale_linetype_discrete(labels=c("30 days p.s.o.", "60 days p.s.o."))+ 
+   scale_x_continuous(breaks = seq(800, 840, by = 5), expand = c(0.02,0.02))+
+   coord_cartesian(clip="off") +
+   annotate("rect", xmin=815.6, xmax=833, ymin=-8, ymax=-2, alpha=0.4)+
+  annotate("text", x=824.5, y=-5, label="FUSION PEPTIDE", fontface="bold")
+
+dir <- "scaled_diff_select_plots/"
+
+plot_name <- paste(dir, "FP_region_patients_enrichment.jpg", sep = "")
+
+ggsave(plot_name, plot2, width = 20, height = 5)
+
+```
+
+Now, combine the two plots into one
+```{r}
+#first combine the COVID patient plots
+plot_patient <- plot_grid(plot2, plot1, nrow = 2, rel_heights = c(1/3, 2/3), align= "v", axis="rlbt")
+
+dir <- "scaled_diff_select_plots/"
+plot_name <- paste(dir, "FP_region_patients_combined.jpg", sep = "")
+ggsave(plot_name, plot_patient, width = 20, height = 12)
+```
+
+
+**linker loop/HR2 peptide region**
+
+make heatmap
+```{r}
+
+dir <- "scaled_diff_select_plots/"
+
+ID.labs <- c("30 days p.s.o.", "60 days p.s.o.")
+names(ID.labs) <- c("conv outpatient 30d", "conv outpatient 60d")
+
+ plot1 <- master %>% 
+    filter(Protein != "S1D614G") %>%
+    filter(participant_ID %in% c("4C", "11C","22C", "35C")) %>%
+    filter(Correct_Loc %in% 1135:1195) %>%
+   ggplot( aes(x=Correct_Loc, y=aa_sub, fill=scaled_diff_sel, width=.90, height=.90)) + 
+   geom_tile() +
+  geom_point(aes(size=is_wt), stroke = 0) +
+  scale_size_manual(values=c(0, 2)) +
+  scale_fill_gradientn(colours = c("red","white","darkblue"), values = rescale(c(-200,0,100)), guide = "colorbar", limits=c(-200,100), na.value ="lightgrey") + 
+  labs(x="SARS-CoV-2 S Protein Position", y="AA Substitution", fill = "Scaled differential \nselection value\n") +
+  theme_bw(base_size=16) +
+  facet_grid(patient_status ~ participant_ID, labeller = labeller(patient_status = ID.labs)) +
+  rotate_x_text(angle=45) +
+  theme(plot.margin = unit(c(-0.5, 0, 0, 0), "cm"), strip.background = element_blank(), strip.text.x = element_blank(), strip.text.y = element_text(face = "bold", size = 16), legend.title.align=0.5, panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+   guides(size = FALSE) + 
+   scale_x_continuous(breaks = seq(1135, 1195, by = 5), expand = c(0.02,0.02)) 
+
+ plot_name <- paste(dir, "HR2_region_patients_scaleddiffsel.jpg", sep = "")
+  
+  ggsave(plot_name, plot1, width = 20, height = 8)
+  
+```
+
+Now make an enrichment plot for the selected patient samples within the HR2 region
+```{r}
+plot2 <- master %>% 
+  filter(Protein != "S1D614G") %>% 
+  filter(participant_ID %in% c("4C", "11C","22C", "35C")) %>%
+  filter(is_wt == TRUE) %>%
+  filter(Correct_Loc %in% 1135:1195) %>%
+  ggplot( aes(x=Correct_Loc, y=enrichment, color=participant_ID, linetype=sample_day)) + 
+    geom_line(alpha=0.8) + 
+  theme_bw(base_size = 16) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  facet_wrap(~participant_ID, nrow=1) +
+  ylab("Enrichment of WT peptides") +
+  labs(linetype = "Sample timepoint") +
+  ylim(-8,80) +
+  scale_color_manual(values = Color_ID)  +
+  guides(color = FALSE) +
+  theme(plot.margin = unit(c(0, 0, 0, 0), "cm"), strip.background = element_blank(), strip.text.x = element_text(face="bold", size = 20), legend.title.align=0.5, panel.border = element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(), axis.title.x=element_blank()) +
+   scale_linetype_discrete(labels=c("30 days p.s.o.", "60 days p.s.o."))+ 
+   scale_x_continuous(breaks = seq(1135, 1195, by = 5), expand = c(0.02,0.02))+
+   coord_cartesian(clip="off") +
+   annotate("rect", xmin=1135, xmax=1162.5, ymin=-8, ymax=-2, alpha=0.4, fill="grey60")+
+  annotate("text", x=1148.5, y=-5, label="LINKER LOOP", fontface="bold")+
+    annotate("rect", xmin=1162.6, xmax=1195, ymin=-8, ymax=-2, alpha=0.4, fill="grey25")+
+  annotate("text", x=1179, y=-5, label="HR2", fontface="bold")
+
+
+dir <- "scaled_diff_select_plots/"
+
+plot_name <- paste(dir, "HR2_region_patients_enrichment.jpg", sep = "")
+
+ggsave(plot_name, plot2, width = 20, height = 5)
+
+```
+
+Now, combine the two plots into one
+```{r}
+#first combine the COVID patient plots
+plot_patient <- plot_grid(plot2, plot1, nrow = 2, rel_heights = c(1/3, 2/3), align= "v", axis="rlbt")
+
+dir <- "scaled_diff_select_plots/"
+plot_name <- paste(dir, "HR2_region_patients_combined.jpg", sep = "")
+ggsave(plot_name, plot_patient, width = 20, height = 12)
+```
+
+**Other regions**
+
+First make the enrichment plot and heatmap for the NTD region
+
+```{r}
+
+dir <- "scaled_diff_select_plots/"
+
+ID.labs <- c("30 days p.s.o.", "60 days p.s.o.")
+names(ID.labs) <- c("conv outpatient 30d", "conv outpatient 60d")
+
+#First plot heatmap
+ plot_NTD_heatmap <- master %>% 
+    filter(Protein != "S1D614G") %>%
+    filter(participant_ID  == "21C") %>%
+    filter(Correct_Loc %in% 245:285) %>%
+    ggplot( aes(x=Correct_Loc, y=aa_sub, fill=scaled_diff_sel, width=.90, height=.90)) + 
+      geom_tile() +
+  geom_point(aes(size=is_wt), stroke = 0) +
+  scale_size_manual(values=c(0, 2)) +
+  scale_fill_gradientn(colours = c("red","white","darkblue"), values = rescale(c(-250,0,100)), guide = "colorbar", limits=c(-250,100), na.value ="lightgrey") + 
+  labs(x="SARS-CoV-2 S Protein Position", y="AA Substitution", fill = "Scaled differential \nselection value\n") +
+  theme_bw(base_size=16) +
+  rotate_x_text(angle=45) +
+  facet_grid(patient_status ~ participant_ID, labeller = labeller(patient_status = ID.labs)) +
+  theme(legend.position = "none", axis.title.x=element_blank(), plot.margin = unit(c(-0.5, 0, 0, 0), "cm"), strip.background = element_blank(), strip.text.x = element_blank(), strip.text.y = element_blank(), legend.title.align=0.5, panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+   guides(size = FALSE) + 
+   scale_x_continuous(breaks = seq(245, 285, by = 5), expand = c(0.02,0.02)) 
+  
+ plot_name <- paste(dir, "NTD_region_patients_scaleddiffsel.jpg", sep = "")
+  
+  ggsave(plot_name, plot_NTD_heatmap, width = 5, height = 8)
+  
+  
+#Then plot enrichment
+  plot_NTD_enrichment <- master %>% 
+  filter(Protein != "S1D614G") %>% 
+  filter(participant_ID  == "21C") %>%
+  filter(is_wt == TRUE) %>%
+  filter(Correct_Loc %in% 245:285) %>%
+  ggplot(aes(x=Correct_Loc, y=enrichment, color=participant_ID, linetype=patient_status)) +
+    geom_line(alpha=0.8) + 
+  theme_bw(base_size = 16) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  facet_wrap(~participant_ID, nrow=1) +
+  ylab("Enrichment of WT peptides") +
+  labs(linetype = "Sample timepoint") +
+  ylim(-8,80) +
+  scale_color_manual(values = Color_ID)  +
+  guides(color = FALSE) +
+  theme(legend.position = "none", plot.margin = unit(c(0, 0, 0, 0), "cm"), strip.background = element_blank(), strip.text.x = element_text(face="bold", size = 20), legend.title.align=0.5, panel.border = element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(), axis.title.x=element_blank()) +
+   scale_linetype_discrete(labels=c("30 days p.s.o.", "60 days p.s.o."))+ 
+   scale_x_continuous(breaks = seq(245, 285, by = 5), expand = c(0.02,0.02))+
+   coord_cartesian(clip="off") +
+   annotate("rect", xmin=245, xmax=285, ymin=-8, ymax=-2, alpha=0.4, color="grey70", fill="grey70")+
+  annotate("text", x=265, y=-5, label="NTD", fontface="bold")
+
+
+
+dir <- "scaled_diff_select_plots/"
+
+plot_name <- paste(dir, "NTD_region_patients_enrichment.jpg", sep = "")
+
+ggsave(plot_name, plot_NTD_enrichment, width = 5, height = 5)
+
+
+#Then combine the NTD plots
+NTD_plot <- plot_grid(plot_NTD_enrichment, plot_NTD_heatmap, ncol = 1, rel_heights = c(1/3, 2/3), align= "v", axis="rlbt") 
+
+
+```
+
+
+Now make the enrichment plot and heatmap for the RBD region
+
+```{r}
+
+dir <- "scaled_diff_select_plots/"
+
+ID.labs <- c("30 days p.s.o.", "60 days p.s.o.")
+names(ID.labs) <- c("conv outpatient 30d", "conv outpatient 60d")
+
+#First plot heatmap
+ plot_RBD_heatmap <- master %>% 
+    filter(Protein != "S1D614G") %>%
+    filter(participant_ID  == "25C") %>%
+    filter(Correct_Loc %in% 470:510) %>%
+    ggplot( aes(x=Correct_Loc, y=aa_sub, fill=scaled_diff_sel, width=.90, height=.90)) + 
+   geom_tile() +
+  geom_point(aes(size=is_wt), stroke = 0) +
+  scale_size_manual(values=c(0, 2)) +
+  scale_fill_gradientn(colours = c("red","white","darkblue"), values = rescale(c(-250,0,100)), guide = "colorbar", limits=c(-250,100), na.value ="lightgrey") + 
+  labs(x="SARS-CoV-2 S Protein Position", y="AA Substitution", fill = "Scaled differential \nselection value\n") +
+  theme_bw(base_size=16) +
+  rotate_x_text(angle=45) +
+  facet_grid(patient_status ~ participant_ID, labeller = labeller(patient_status = ID.labs)) +
+  theme(legend.position = "none", axis.text.y = element_blank(),
+  axis.ticks.y = element_blank(), axis.title.x=element_blank(), axis.title.y=element_blank(), plot.margin = unit(c(-0.5, 0, 0, 0), "cm"), strip.background = element_blank(), strip.text.x = element_blank(), strip.text.y = element_blank(), legend.title.align=0.5, panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+   guides(size = FALSE) + 
+   scale_x_continuous(breaks = seq(470, 510, by = 5), expand = c(0.02,0.02)) 
+
+
+ plot_name <- paste(dir, "RBD_region_patients_scaleddiffsel.jpg", sep = "")
+  
+  ggsave(plot_name, plot_RBD_heatmap, width = 5, height = 8)
+  
+  
+#Then plot enrichment
+  plot_RBD_enrichment <- master %>% 
+  filter(Protein != "S1D614G") %>% 
+  filter(participant_ID  == "25C") %>%
+  filter(is_wt == TRUE) %>%
+  filter(Correct_Loc %in% 470:510) %>%
+  ggplot( aes(x=Correct_Loc, y=enrichment, color=participant_ID, linetype=patient_status)) + 
+  geom_line(alpha=0.8) + 
+  theme_bw(base_size = 16) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  facet_wrap(~participant_ID, nrow=1) +
+  ylab("Enrichment of WT peptides") +
+  labs(linetype = "Sample timepoint") +
+  ylim(-8,80) +
+  scale_color_manual(values = Color_ID)  +
+  guides(color = FALSE) +
+  theme(legend.position = "none", axis.text.y = element_blank(),
+  axis.ticks.y = element_blank(), plot.margin = unit(c(0, 0, 0, 0), "cm"), strip.background = element_blank(), strip.text.x = element_text(face="bold", size = 20), legend.title.align=0.5, panel.border = element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(), axis.title.x=element_blank(), axis.title.y=element_blank()) +
+   scale_linetype_discrete(labels=c("30 days p.s.o.", "60 days p.s.o."))+ 
+   scale_x_continuous(breaks = seq(470, 510, by = 5), expand = c(0.02,0.02))+
+   coord_cartesian(clip="off") +
+   annotate("rect", xmin=470, xmax=510, ymin=-8, ymax=-2, alpha=0.4, color="grey50", fill="grey50")+
+  annotate("text", x=490, y=-5, label="RBD", fontface="bold")
+
+
+dir <- "scaled_diff_select_plots/"
+
+plot_name <- paste(dir, "RBD_region_patients_enrichment.jpg", sep = "")
+
+ggsave(plot_name, plot_RBD_enrichment, width = 5, height = 5)
+
+
+#Then combine the RBD plots
+RBD_plot <- plot_grid(plot_RBD_enrichment, plot_RBD_heatmap, ncol = 1, rel_heights = c(1/3, 2/3), align= "v", axis="rlbt") 
+
+
+```
+
+
+Now make the enrichment plot and heatmap for the CTD1 region
+
+```{r}
+
+dir <- "scaled_diff_select_plots/"
+
+ID.labs <- c("30 days p.s.o.", "60 days p.s.o.")
+names(ID.labs) <- c("conv outpatient 30d", "conv outpatient 60d")
+
+#First plot heatmap
+ plot_CTD1_heatmap <- master %>% 
+    filter(Protein != "S1D614G") %>%
+    filter(participant_ID  == "25C") %>%
+    filter(Correct_Loc %in% 540:580) %>%
+    ggplot( aes(x=Correct_Loc, y=aa_sub, fill=scaled_diff_sel, width=.90, height=.90)) + 
+    geom_tile() +
+  geom_point(aes(size=is_wt), stroke = 0) +
+  scale_size_manual(values=c(0, 2)) +
+  scale_fill_gradientn(colours = c("red","white","darkblue"), values = rescale(c(-250,0,100)), guide = "colorbar", limits=c(-250,100), na.value ="lightgrey") + 
+  labs(x="SARS-CoV-2 S Protein Position", y="AA Substitution", fill = "Scaled differential \nselection value\n") +
+  theme_bw(base_size=16) +
+  rotate_x_text(angle=45) +
+  facet_grid(patient_status ~ participant_ID, labeller = labeller(patient_status = ID.labs)) +
+  theme(legend.position = "none", axis.text.y = element_blank(),
+  axis.ticks.y = element_blank(), axis.title.x=element_blank(), axis.title.y=element_blank(), plot.margin = unit(c(-0.5, 0, 0, 0), "cm"), strip.background = element_blank(), strip.text.x = element_blank(), strip.text.y = element_blank(), legend.title.align=0.5, panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+   guides(size = FALSE) + 
+   scale_x_continuous(breaks = seq(540, 580, by = 5), expand = c(0.02,0.02)) 
+
+
+ plot_name <- paste(dir, "CTD1_region_patients_scaleddiffsel.jpg", sep = "")
+  
+  ggsave(plot_name, plot_CTD1_heatmap, width = 5, height = 8)
+  
+  
+#Then plot enrichment
+  plot_CTD1_enrichment <- master %>% 
+  filter(Protein != "S1D614G") %>% 
+  filter(participant_ID  == "25C") %>%
+  filter(is_wt == TRUE) %>%
+  filter(Correct_Loc %in% 540:580) %>%
+  ggplot( aes(x=Correct_Loc, y=enrichment, color=participant_ID, linetype=patient_status)) + 
+  geom_line(alpha=0.8) + 
+  theme_bw(base_size = 16) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  facet_wrap(~participant_ID, nrow=1) +
+  ylab("Enrichment of WT peptides") +
+  labs(linetype = "Sample timepoint") +
+  ylim(-8,80) +
+  scale_color_manual(values = Color_ID)  +
+  guides(color = FALSE) +
+  theme(legend.position = "none", axis.text.y = element_blank(),
+  axis.ticks.y = element_blank(), plot.margin = unit(c(0, 0, 0, 0), "cm"), strip.background = element_blank(), strip.text.x = element_text(face="bold", size = 20), legend.title.align=0.5, panel.border = element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(), axis.title.x=element_blank(), axis.title.y=element_blank()) +
+   scale_linetype_discrete(labels=c("30 days p.s.o.", "60 days p.s.o."))+ 
+   scale_x_continuous(breaks = seq(540, 580, by = 5), expand = c(0.02,0.02))+
+   coord_cartesian(clip="off") +
+   annotate("rect", xmin=540, xmax=580, ymin=-8, ymax=-2, alpha=0.4, color="grey30", fill="grey30")+
+  annotate("text", x=560, y=-5, label="CTD", fontface="bold")
+
+
+dir <- "scaled_diff_select_plots/"
+
+plot_name <- paste(dir, "CTD1_region_patients_enrichment.jpg", sep = "")
+
+ggsave(plot_name, plot_CTD1_enrichment, width = 5, height = 5)
+
+
+#Then combine the CTD1 plots
+CTD1_plot <- plot_grid(plot_CTD1_enrichment, plot_CTD1_heatmap, ncol = 1, rel_heights = c(1/3, 2/3), align= "v", axis="rlbt") 
+
+
+```
+
+Now make the enrichment plot and heatmap for the CTD2 region
+
+```{r}
+
+dir <- "scaled_diff_select_plots/"
+
+ID.labs <- c("30 days p.s.o.", "60 days p.s.o.")
+names(ID.labs) <- c("conv outpatient 30d", "conv outpatient 60d")
+
+#First plot heatmap, with legend
+ plot_CTD2_heatmap <- master %>% 
+    filter(Protein != "S1D614G") %>%
+    filter(participant_ID  == "7C") %>%
+    filter(Correct_Loc %in% 615:650) %>%
+    ggplot( aes(x=Correct_Loc, y=aa_sub, fill=scaled_diff_sel, width=.90, height=.90)) + 
+  geom_tile() +
+  geom_point(aes(size=is_wt), stroke = 0) +
+  scale_size_manual(values=c(0, 2)) +
+  scale_fill_gradientn(colours = c("red","white","darkblue"), values = rescale(c(-250,0,100)), guide = "colorbar", limits=c(-250,100), na.value ="lightgrey") + 
+  labs(x="SARS-CoV-2 S Protein Position", y="AA Substitution", fill = "Scaled differential \nselection value\n") +
+  theme_bw(base_size=16) +
+  rotate_x_text(angle=45) +
+  facet_grid(patient_status ~ participant_ID, labeller = labeller(patient_status = ID.labs)) +
+  theme(axis.title.x=element_blank(), axis.text.y = element_blank(),
+  axis.ticks.y = element_blank(), axis.title.y=element_blank(), plot.margin = unit(c(-0.5, 0, 0, 0), "cm"), strip.background = element_blank(), strip.text.x = element_blank(), strip.text.y = element_text(face = "bold", size = 16), legend.title.align=0.5, panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+   guides(size = FALSE) + 
+   scale_x_continuous(breaks = seq(615, 650, by = 5), expand = c(0.02,0.02)) 
+
+ plot_name <- paste(dir, "CTD2_region_patients_scaleddiffsel.jpg", sep = "")
+  
+  ggsave(plot_name, plot_CTD2_heatmap, width = 5, height = 8)
+  
+  
+#Then plot enrichment
+  plot_CTD2_enrichment <- master %>% 
+  filter(Protein != "S1D614G") %>% 
+  filter(participant_ID  == "7C") %>%
+  filter(is_wt == TRUE) %>%
+  filter(Correct_Loc %in% 615:650) %>%
+  ggplot( aes(x=Correct_Loc, y=enrichment, color=participant_ID, linetype=patient_status)) + 
+  geom_line(alpha=0.8) + 
+  theme_bw(base_size = 16) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  facet_wrap(~participant_ID, nrow=1) +
+  ylab("Enrichment of WT peptides") +
+  labs(linetype = "Sample timepoint") +
+  ylim(-8,80) +
+  scale_color_manual(values = Color_ID)  +
+  guides(color = FALSE) +
+  theme(plot.margin = unit(c(0, 0, 0, 0), "cm"), axis.text.y = element_blank(),
+  axis.ticks.y = element_blank(), strip.background = element_blank(), strip.text.x = element_text(face="bold", size = 20), legend.title.align=0.5, panel.border = element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(), axis.title.x=element_blank(), axis.title.y=element_blank()) +
+   scale_linetype_discrete(labels=c("30 days p.s.o.", "60 days p.s.o."))+ 
+   scale_x_continuous(breaks = seq(615, 650, by = 5), expand = c(0.02,0.02))+
+   coord_cartesian(clip="off") +
+   annotate("rect", xmin=615, xmax=650, ymin=-8, ymax=-2, alpha=0.4, color="grey30", fill="grey30")+
+  annotate("text", x=632.5, y=-5, label="CTD", fontface="bold")
+
+
+dir <- "scaled_diff_select_plots/"
+
+plot_name <- paste(dir, "CTD2_region_patients_enrichment.jpg", sep = "")
+
+ggsave(plot_name, plot_CTD2_enrichment, width = 5, height = 5)
+
+
+#Then combine the CTD2 plots
+CTD2_plot <- plot_grid(plot_CTD2_enrichment, plot_CTD2_heatmap, ncol = 1, rel_heights = c(1/3, 2/3), align= "v", axis="rlbt") 
+
+
+```
+
+Now, combine all enrichment and heatmaps from the "other" regions, add a legend
+```{r}
+#first combine the COVID patient plots
+plot <- plot_grid(NTD_plot, RBD_plot, CTD1_plot, CTD2_plot, nrow = 1, rel_widths = c(1.1, 1, 1, 1.58))
+
+#Annotate the plot with x axis and y axis labels
+plot <- annotate_figure(plot, bottom = text_grob("SARS-CoV-2 S Protein Position", size = 14))
+
+
+ggsave("other_region_patients_scaleddiffsel.jpg", plot, width = 20, height = 10)
+
+```
+
+##Compare findings to GSIAID mutants
+
+Make a plot with paired WT and GISAID mutants
+
+Will take the scaled diff sel values of the the mutants and compare against example mutants
+```{r}
+dir.create("GSIAID_plots")
+
+GISIAD_data <- master %>%
+  mutate(GISAIDmutants = case_when(
+    Correct_Loc == "5" & aa_sub == "F" ~ "variant", 
+    Correct_Loc == "21" & aa_sub == "I" ~ "variant", 
+    Correct_Loc == "253" & aa_sub == "G" ~ "variant", 
+    Correct_Loc == "477" & aa_sub == "N" ~ "variant", 
+    Correct_Loc == "614" & aa_sub == "G" ~ "variant", 
+    Correct_Loc == "839" & aa_sub == "Y" ~ "variant", 
+    Correct_Loc == "879" & aa_sub == "S" ~ "variant", 
+    Correct_Loc == "936" & aa_sub == "Y" ~ "variant")) %>% 
+  filter(!is.na(GISAIDmutants )) %>% 
+  filter(Protein != "S1D614G") %>% 
+  filter(patient_status == "conv outpatient 60d") %>%
+  mutate(label = case_when(
+    Correct_Loc == "5" ~ "L5F", 
+    Correct_Loc == "21" ~ "R21I",
+    Correct_Loc == "253" ~ "D253G",
+    Correct_Loc == "477" ~ "S477N", 
+    Correct_Loc == "614" ~ "D614G",
+    Correct_Loc == "839" ~ "D839Y",
+    Correct_Loc == "879" ~ "A879S",
+    Correct_Loc == "936" ~ "D936Y"
+  )) %>%
+  mutate(label = fct_relevel(label, "L5F", "R21I", "D253G", "S477N", "D614G", "D839Y", "A879S", "D936Y"))
+
+plot1 <- GISIAD_data %>% 
+  ggplot(aes(x = label, y=scaled_diff_sel, color = participant_ID)) +
+  geom_jitter(size=3, width=0.1) +
+  theme_classic(base_size = 16) +
+  ggtitle("Commonly circulating mutants identified by GISAID") + 
+  ylab("Scaled differential selection value") +
+  labs(color = "Patient ID") +
+  scale_color_manual(values = Color_ID) +
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1),legend.position = "none", axis.title.x=element_blank(), plot.title = element_text(hjust = 0.5)) +
+  ylim(-230, 5)
+  
+print(plot1)
+
+dir <- "GSIAID_plots/"
+  
+plot_name <- paste(dir, "mutation_level_comparison_GISAIDmutants_scaleddiffsel.jpg", sep = "")
+
+ggsave(plot_name, plot1, width = 16, height = 6)
+
+```
+
+Now plot selected mutants found by Phage-DMS
+```{r}
+dir.create("GSIAID_plots")
+
+GISIAD_data <- master %>%
+  mutate(ctrl_mutants = case_when(
+    Correct_Loc == "819" & aa_sub == "K" ~ "variant",
+    Correct_Loc == "1156" & aa_sub == "G" ~ "variant")) %>% 
+  filter(!is.na(ctrl_mutants )) %>% 
+  filter(Protein != "S1D614G") %>% 
+  filter(patient_status == "conv outpatient 60d") %>%
+  mutate(label = case_when(
+    Correct_Loc == "819" ~ "E819K", 
+    Correct_Loc == "1156" ~ "F1156G"))
+
+plot2 <- GISIAD_data %>% 
+  ggplot(aes(x = label, y=scaled_diff_sel, color = participant_ID)) +
+  geom_jitter(size=3, width=0.1) +
+  theme_classic(base_size = 16) +
+  ggtitle("Example escape mutants \nidentified by Phage-DMS") + 
+  ylab("Scaled differential selection value") +
+  labs(color = "Patient ID") +
+  scale_color_manual(values = Color_ID) +
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1), axis.title.x=element_blank(), plot.title = element_text(hjust = 0.5))+
+  ylim(-230, 5)
+  
+print(plot2)
+
+dir <- "GSIAID_plots/"
+  
+plot_name <- paste(dir, "mutation_level_comparison_examplemutants_scaleddiffsel.jpg", sep = "")
+
+ggsave(plot_name, plot2, width = 5, height = 6)
+
+```
+```{r}
+#Then combine the  plots
+GISAID_plot <- plot_grid(plot1, plot2, nrow = 1, rel_widths=c(.68, .32), align= "h", axis="rlbt") 
+
+dir <- "GSIAID_plots/"
+  
+plot_name <- paste(dir, "mutation_level_comparison_scaleddiffsel.jpg", sep = "")
+
+ggsave(plot_name, GISAID_plot, width = 14, height = 5)
+```
+
+
+
+```{r}
+dir.create("GSIAID_plots")
+
+paired_GISIAD_data <- master %>%
+  mutate(GISAIDmutants = case_when(
+    Correct_Loc == "5" & aa_sub == "F" ~ "variant", 
+    Correct_Loc == "21" & aa_sub == "I" ~ "variant", 
+    Correct_Loc == "253" & aa_sub == "G" ~ "variant", 
+    Correct_Loc == "477" & aa_sub == "N" ~ "variant", 
+    Correct_Loc == "614" & aa_sub == "G" ~ "variant", 
+    Correct_Loc == "839" & aa_sub == "Y" ~ "variant", 
+    Correct_Loc == "879" & aa_sub == "S" ~ "variant", 
+    Correct_Loc == "936" & aa_sub == "Y" ~ "variant", 
+    Correct_Loc == "5" & is_wt == TRUE ~ "WT", 
+    Correct_Loc == "21" & is_wt == TRUE ~ "WT",
+    Correct_Loc == "253" & is_wt == TRUE ~ "WT",
+    Correct_Loc == "477" & is_wt == TRUE ~ "WT",
+    Correct_Loc == "614" & is_wt == TRUE ~ "WT",
+    Correct_Loc == "839" & is_wt == TRUE ~ "WT",
+    Correct_Loc == "879" & is_wt == TRUE ~ "WT",
+    Correct_Loc == "936" & is_wt == TRUE ~ "WT")) %>% 
+  filter(!is.na(GISAIDmutants )) %>% 
+  filter(Protein != "S1D614G") %>% 
+  filter(patient_status == "conv outpatient 60d") %>%
+  select(enrichment, Correct_Loc, participant_ID, GISAIDmutants) %>%
+  pivot_wider(names_from = "GISAIDmutants", values_from = "enrichment") %>%
+  mutate(label = case_when(
+    Correct_Loc == "5" ~ "L5F", 
+    Correct_Loc == "21" ~ "R21I",
+    Correct_Loc == "253" ~ "D253G",
+    Correct_Loc == "477" ~ "S477N", 
+    Correct_Loc == "614" ~ "D614G",
+    Correct_Loc == "839" ~ "D839Y",
+    Correct_Loc == "879" ~ "A879S",
+    Correct_Loc == "936" ~ "D936Y"
+  )) %>%
+  mutate(label = fct_relevel(label, "L5F", "R21I", "D253G", "S477N", "D614G", "D839Y", "A879S", "D936Y")) %>%
+  filter(!is.na(variant) & !is.na(WT))
+
+plot1 <- paired_GISIAD_data %>% 
+  ggpaired(cond1 ="WT", cond2 = "variant", line.color = "gray", line.size = 0.4,  main="Commonly circulating mutants identified by GISAID") +
+  stat_compare_means(paired = TRUE) +
+  facet_wrap(~label, nrow=1) +
+  ylim(0,42) +
+  theme_classic(base_size = 18) +
+  theme(strip.background = element_blank(), strip.text.x = element_text(face="bold", size = 18), panel.border = element_rect(colour = "black", fill=NA, size=1), plot.title = element_text(hjust = 0.5)) +
+  xlab("") +
+  ylab("Enrichment") 
+
+print(plot1)
+
+dir <- "GSIAID_plots/"
+  
+plot_name <- paste(dir, "mutation_level_comparison_GISAIDmutants.jpg", sep = "")
+
+ggsave(plot_name, plot1, width = 16, height = 6)
+
+```
+
+```{r}
+paired_ctrl_mutants_data <- master %>%
+  mutate(ctrl_mutants = case_when(
+    Correct_Loc == "819" & aa_sub == "K" ~ "variant",
+    Correct_Loc == "1156" & aa_sub == "G" ~ "variant", 
+    Correct_Loc == "819" & is_wt == TRUE ~ "WT", 
+    Correct_Loc == "1156" & is_wt == TRUE ~ "WT")) %>% 
+  filter(!is.na(ctrl_mutants )) %>% 
+  filter(Protein != "S1D614G") %>% 
+  filter(patient_status == "conv outpatient 60d") %>%
+  filter(!is.na(enrichment )) %>%
+  select(enrichment, Correct_Loc, participant_ID, ctrl_mutants) %>%
+  pivot_wider(names_from = "ctrl_mutants", values_from = "enrichment") %>%
+  mutate(label = case_when(
+    Correct_Loc == "819" ~ "E819K", 
+    Correct_Loc == "1156" ~ "F1156G"
+  )) %>%
+  filter(!is.na(variant) & !is.na(WT))
+
+plot2 <- paired_ctrl_mutants_data %>% 
+  ggpaired(cond1 ="WT", cond2 = "variant", line.color = "gray", line.size = 0.4,  main="Example escape mutants \nidentified by Phage-DMS") +
+  stat_compare_means(paired = TRUE) +
+  facet_wrap(~label, nrow=1) +
+  theme_classic(base_size = 18) +
+  ylim(0,42) +
+  theme(strip.background = element_blank(), strip.text.x = element_text(face="bold", size = 18), panel.border = element_rect(colour = "black", fill=NA, size=1), plot.title = element_text(hjust = 0.5))+
+  xlab("") +
+  ylab("") 
+
+print(plot2)
+
+dir <- "GSIAID_plots/"
+  
+plot_name <- paste(dir, "mutation_level_comparison_examplemutants.jpg", sep = "")
+
+ggsave(plot_name, plot2, width = 16, height = 6)
+
+```
+
+```{r}
+#Then combine the  plots
+GISAID_plot <- plot_grid(plot1, plot2, nrow = 1, rel_widths=c(.78, .22), align= "h", axis="rlbt") 
+
+dir <- "GSIAID_plots/"
+  
+plot_name <- paste(dir, "mutation_level_comparison.jpg", sep = "")
+
+ggsave(plot_name, GISAID_plot, width = 20, height = 6)
+```
+
+
+Now, plot the same data as above, but plot as fold change
+```{r}
+
+paired_GISIAD_data <- paired_GISIAD_data %>%
+  mutate(fold_change = log2(variant/WT)) 
+  
+
+paired_ctrl_mutants_data <- paired_ctrl_mutants_data %>%
+  mutate(fold_change = log2(variant/WT)) 
+```
+
+```{r}
+plota <- paired_GISIAD_data %>%
+  ggboxplot(x = "label", y = "fold_change", add = "jitter", xlab=FALSE, ylab="Fold change in enrichment between WT and variant") +
+  #theme_classic(base_size = 14) +
+  ylim(-10,6) +
+  scale_color_manual(values = Color_ID)  +
+  ggtitle("Commonly circulating mutants identified by GISAID") +
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1), plot.title = element_text(hjust = 0.5, face="bold", size=14), axis.text=element_text(size=14,face="bold"), legend.position = "none")
+
+
+print(plota)
+```
+
+```{r}
+plotb <- paired_ctrl_mutants_data %>%
+  ggboxplot(x = "label", y = "fold_change", add = "jitter", xlab=FALSE, ylab="Fold change in enrichment between WT and variant") +
+  #theme_classic(base_size = 14) +
+  ggtitle("Example escape mutants \nidentified by Phage-DMS") +
+  scale_color_manual(values = Color_ID)  +
+  ylim(-10,6) +
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1), plot.title = element_text(hjust = 0.5, face="bold", size=14), axis.text=element_text(size=14,face="bold"))
+
+print(plotb)
+```
+
+
+```{r}
+#Then combine the  plots
+GISAID_plot <- plot_grid(plota, plotb, nrow = 1, rel_widths=c(.78, .22), align= "h", axis="rlbt") 
+
+dir <- "GSIAID_plots/"
+  
+plot_name <- paste(dir, "mutation_level_comparison_foldchange.jpg", sep = "")
+
+ggsave(plot_name, GISAID_plot, width = 22, height = 6)
+```
+
+NOW, plot the enrichment of all peptides that span the D614G site.
+```{r}
+#The peptides are 31 aa long, so aa 599-629 are those sites. Need to also remove site D614 since those will have the same value between the two backgrounds
+D614G_data <- master %>% 
+  filter(Correct_Loc %in% 599:619) %>%
+  filter(Correct_Loc != 614) %>% 
+  filter(patient_status == "conv outpatient 60d") %>%
+  filter(is_wt == FALSE) %>%
+  select(enrichment, Correct_Loc, participant_ID, Protein, aa_sub) %>%
+  pivot_wider(names_from = "Protein", values_from = "enrichment") %>%
+  filter(!is.na(S1) & !is.na(S1D614G))
+
+plot <- D614G_data %>%
+  ggpaired(cond1="S1", cond2="S1D614G", color="participant_ID", line.color = "gray", line.size = 0.4, width=0) +
+  facet_wrap(~participant_ID, nrow=2) +
+  stat_compare_means(paired=TRUE) +
+  theme_classic(base_size = 18) +
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1),  axis.text=element_text(size=18,face="bold"), legend.position = "none") +
+  scale_color_manual(values = Color_ID)  +
+  ylim(-1,40) +
+  xlab("") +
+  ylab("Enrichment") +
+  theme(strip.background = element_blank(), strip.text.x = element_text(face="bold", size = 18), panel.border = element_rect(colour = "black", fill=NA, size=1)) +
+  scale_x_discrete(labels= c("WT", "D614G"))
+
+dir <- "GSIAID_plots/"
+  
+plot_name <- paste(dir, "D614G_comparison_enrichment_60d.jpg", sep = "")
+
+ggsave(plot_name, plot, width = 18, height = 8)
+
+
+print(plot)
+```
+Test the effect size of D614G mutants
+```{r}
+D614G_data <- master %>% 
+  filter(Correct_Loc %in% 599:619) %>%
+  filter(Correct_Loc != 614) %>% 
+  filter(patient_status == "conv outpatient 60d") %>%
+  filter(is_wt == FALSE) 
+
+D614G_data %>%
+  group_by(participant_ID) %>%
+  wilcox_effsize(enrichment ~ Protein, paired=TRUE)
+```
+
+Take the top 50 enriched peptides made in the WT background from each patient
+```{r}
+D614G_data_top <- D614G_data %>%
+  group_by(participant_ID) %>%
+  arrange(desc(S1D614G)) %>%
+  
+  
+  slice(1:50)
+
+plot <- D614G_data_top %>%
+  ggpaired(cond1="S1", cond2="S1D614G", color="participant_ID", line.color = "gray", line.size = 0.4) +
+  facet_wrap(~participant_ID, nrow=2) +
+  stat_compare_means(paired=TRUE) +
+  theme_classic(base_size = 18) +
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1),  axis.text=element_text(size=18,face="bold"), legend.position = "none") +
+  scale_color_manual(values = Color_ID)  +
+  ylim(-1,40) +
+  xlab("") +
+  ylab("Enrichment") +
+  theme(strip.background = element_blank(), strip.text.x = element_text(face="bold", size = 18), panel.border = element_rect(colour = "black", fill=NA, size=1)) +
+  scale_x_discrete(labels= c("WT", "D614G"))
+
+dir <- "GSIAID_plots/"
+  
+plot_name <- paste(dir, "D614G_comparison_enrichment_60d_top50.jpg", sep = "")
+
+ggsave(plot_name, plot, width = 22, height = 10)
+
+
+print(plot)
+```
+
+
+
+NOW, plot the enrichment of all peptides that span the D614G site.
+```{r}
+#The peptides are 31 aa long, so aa 599-629 are those sites. Need to also remove site D614 since those will have the same value between the two backgrounds
+D614G_data <- master %>% 
+  filter(Correct_Loc %in% 599:619) %>%
+  filter(Correct_Loc != 614) %>% 
+  filter(patient_status == "conv outpatient 30d") %>% 
+  filter(is_wt == FALSE) %>%
+  select(enrichment, Correct_Loc, participant_ID, Protein, aa_sub) %>%
+  pivot_wider(names_from = "Protein", values_from = "enrichment") %>%
+  filter(!is.na(S1) & !is.na(S1D614G))
+
+plot <- D614G_data %>%
+  ggpaired(cond1="S1", cond2="S1D614G", color="participant_ID") +
+  facet_wrap(~participant_ID, nrow=2) +
+  stat_compare_means(paired=TRUE) +
+  theme_classic(base_size = 14) +
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1),  axis.text=element_text(size=14,face="bold"), legend.position = "none") +
+  scale_color_manual(values = Color_ID)  +
+  ylim(-1,40) +
+  xlab("") +
+  ylab("Enrichment") +
+  theme(strip.background = element_blank(), strip.text.x = element_text(face="bold", size = 14), panel.border = element_rect(colour = "black", fill=NA, size=1))
+
+dir <- "GSIAID_plots/"
+  
+plot_name <- paste(dir, "D614G_comparison_enrichment_30d.jpg", sep = "")
+
+ggsave(plot_name, plot, width = 22, height = 10)
+
+
+print(plot)
+```
+
+Now plot the fold change in enrichment for mutant peptide with and without the D614G mutation
+```{r}
+D614G_data_FC <- D614G_data %>%
+  mutate(fold_change = log2(S1D614G/S1)) 
+
+plot <- D614G_data_FC %>%
+  ggboxplot(x = "participant_ID", y = "fold_change", add = "jitter", xlab=FALSE, ylab="Fold change in enrichment between WT and D614G peptides", color="participant_ID") +
+  theme_classic(base_size = 14) +
+  scale_color_manual(values = Color_ID)  +
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1), plot.title = element_text(hjust = 0.5, face="bold", size=14), axis.text=element_text(size=14,face="bold"))
+
+print(plot)
+
+dir <- "GSIAID_plots/"
+  
+plot_name <- paste(dir, "D614G_comparison_FC_60d.jpg", sep = "")
+
+ggsave(plot_name, plot, width = 22, height = 8)
+
+
+print(plot)
+```
+
+Now plot the fold change between scaled diff sel values for peptides with and without the D614G mutation
+```{r}
+#The peptides are 31 aa long, so aa 599-629 are those sites. Need to also remove site D614 since those will have the same value between the two backgrounds
+D614G_data_FC <- master %>% 
+  filter(Correct_Loc %in% 599:619) %>%
+  filter(Correct_Loc != 614) %>% 
+  filter(patient_status == "conv outpatient 60d") %>% 
+  filter(is_wt == FALSE) %>%
+  select(scaled_diff_sel, Correct_Loc, participant_ID, Protein, aa_sub) %>%
+  pivot_wider(names_from = "Protein", values_from = "scaled_diff_sel") %>%
+  filter(!is.na(S1) & !is.na(S1D614G)) %>%
+  mutate(fold_change = log2(S1D614G/S1)) 
+  
+
+plot <- D614G_data_FC %>%
+  ggboxplot(x = "participant_ID", y = "fold_change", add = "jitter", xlab=FALSE, ylab="Fold change in differential selection between WT and D614G peptides", color="participant_ID") +
+  theme_classic(base_size = 14) +
+  scale_color_manual(values = Color_ID)  +
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1), plot.title = element_text(hjust = 0.5, face="bold", size=14), axis.text=element_text(size=14,face="bold"))
+
+print(plot)
+
+dir <- "GSIAID_plots/"
+  
+plot_name <- paste(dir, "D614G_comparison_scaleddiffselFC_60d.jpg", sep = "")
+
+ggsave(plot_name, plot, width = 16, height = 8)
+
+
+print(plot)
+```
+##NOW, need to export data for viewing in DMS-view
+The data file is a csv (comma-separated file) and it must have the following columns:
+
+site: The site plot will be ordered by this column. The values must be ordinal.
+CORRECT LOC
+label_site: The site plot will be labeled by this column. The values can be numeric or a string.
+CORRECT_LOC
+wildtype: The wildtype at a given site. The tooltips will display this information. The values can be numeric or a string.
+WT_AA
+mutation: The mutation plot will display this mutation. The values must be a single uppercase letter.
+AA_SUB
+condition: The experimental condition used in the experiment to generate the data for the site plot and the mutation plot. The dropdown menu will display the conditions and the user can toggle between different conditions.
+PATIENT_TIMEPOINT
+protein_chain: The protein chain(s) in the pdb file for a given site. The values must be in a space-separated list. For example, populating the cell with A C will highlight the site on chains A and C (but not B).
+A B C
+protein_site: The protein site in the pdb file for a given site.
+The data file must contain at least one column from each of the following categories.
+CORRECT_LOC
+
+site_*: The value for a given site for a given metric (represented by *). The values must be numeric. For example, site_mean.
+site_WT_enrichment
+site_total_scaled_diff_sel
+mut_*: The value for a given site for a given mutation for a given metric (represented by *). The values must be numeric. For example, mut_mean.
+mut_scaled_diff_sel
+```{r}
+#First create a column with the wildtype aa
+dms_view_data <- master %>%
+  mutate(wildtype = case_when(
+    is_wt == TRUE ~ aa_sub)) %>%
+  group_by(Correct_Loc) %>%
+  fill(wildtype, .direction="downup")
+
+#Then rename some columns in order to match dms-view requirements
+dms_view_data <- dms_view_data %>%
+  select(site = Correct_Loc, wildtype, mutation = aa_sub, condition = participant_timepoint, site_WT_enrichment = enrichment, mut_scaled_diff_sel = scaled_diff_sel) %>%
+  add_column(protein_chain = "A B C") %>%
+  mutate(label_site = site) %>%
+  mutate(protein_site = site)
+
+#Now export this to a csv
+write.csv(dms_view_data,file = "Spike_DMS_view_data_2020-10-27.csv")
+```
+
