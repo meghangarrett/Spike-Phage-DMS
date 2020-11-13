@@ -6,7 +6,7 @@ dubbed [phip-flow](https://github.com/matsengrp/phip-flow) to align illumina seq
 
 ### Abstract
 
-TODO
+Defining long-term protective immunity to SARS-CoV-2 is one of the most pressing questions of our time and will require a detailed understanding of potential ways this virus can evolve to escape immune protection. Immune protection will most likely be mediated by antibodies that bind to the viral entry protein, Spike (S). Here we used Phage-DMS, an approach that comprehensively interrogates the effect of all possible mutations on binding to a protein of interest, to define the profile of antibody escape to the SARS-CoV-2 S protein using COVID-19 convalescent plasma. Antibody binding was common in two regions: the fusion peptide and linker region upstream of the heptad repeat region 2. However, escape mutations were variable within these immunodominant regions. There was also individual variation in less commonly targeted epitopes. This study provides a granular view of potential antibody escape pathways and suggests there will be individual variation in antibody-mediated virus evolution. 
 
 ### Spike Phage-DMS library design
 
