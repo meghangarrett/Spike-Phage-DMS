@@ -12,7 +12,9 @@ Defining long-term protective immunity to SARS-CoV-2 is one of the most pressing
 
 All code used to optimize sequences and generate oligonucleotides to create the Spike Phage-DMS library can be found within the `library-design` directory. See README file within that directory for a description of the files needed and scripts run.
 
-### phip-flow analysis environment
+### Alignment of sequence reads
+
+**phip-flow analysis environment**
 
 The library design script and analysis notebooks contain all code needed to run analysis 
 for the manuscript using custom code from 
