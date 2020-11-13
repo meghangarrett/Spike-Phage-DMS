@@ -794,7 +794,7 @@ ggsave(plot_name, plot, width = 20, height = 12)
 
 ```
 
-##Compare findings to circulating variants based on GSIAID sequencing data
+## Compare findings to circulating variants based on GSIAID sequencing data
 
 
 **Plot the enrichment of all mutant peptides that span the D614G site**
@@ -1043,7 +1043,7 @@ ggsave(plot_name, plot, width = 8, height = 10)
 ```
 
 
-##Finally, need to export data for viewing in DMS-view
+## Finally, need to export data for viewing in DMS-view
 ```{r}
 dir.create("dms-view")
 
