@@ -4,7 +4,7 @@
 
 *What data is shown here?*
 
-Here we have loaded the complete data set associated with this manuscript. The drop down menu allows you to toggle between patient samples (taken at either 30 days or 60 days post symptom onset). The top plot displays the enrichment of the WT peptide associated with the site, and the bottom plot displays the scaled differential selection values associated with mutant peptides at each site in logo plot form. All data is from peptides made in the Wuhan Hu-1 strain.
+Here we have loaded the complete data set associated with this manuscript. The drop down menu allows you to toggle between patient samples (taken at either 30 days or 60 days post symptom onset). The top plot displays the enrichment of the WT peptide associated with the site, and the bottom plot displays the scaled differential selection values associated with mutant peptides at each site in logo plot form. Selected sites are highlighted on the structure of the spike trimer, shown on the right (PDB:6VXX). All data is from peptides made in the Wuhan Hu-1 strain.
 
 *Where can I find out more?*
 
