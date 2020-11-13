@@ -1,6 +1,7 @@
 # Spike Phage DMS Repo
 
-This repository contains all necessary code for analysis described in <High resolution profiling of pathways of escape for SARS-CoV-2 spike-binding antibodies by Garrett et al>
+This repository contains all necessary code for analysis described in "High resolution profiling of pathways of escape for SARS-CoV-2 spike-binding antibodies by Garrett et al"
+
 The repository contains the code for generating the sequences used to make the Spike Phage-DMS library, a [Nextflow](https://www.nextflow.io/docs/latest/getstarted.html) pipeline,
 dubbed [phip-flow](https://github.com/matsengrp/phip-flow) to align illumina sequencing reads, along with all analysis and plotting code.
 
@@ -12,7 +13,9 @@ Defining long-term protective immunity to SARS-CoV-2 is one of the most pressing
 
 All code used to optimize sequences and generate oligonucleotides to create the Spike Phage-DMS library can be found within the `library-design` directory. See README file within that directory for a description of the files needed and scripts run.
 
-### phip-flow analysis environment
+### Alignment of sequence reads
+
+**phip-flow analysis environment**
 
 The library design script and analysis notebooks contain all code needed to run analysis 
 for the manuscript using custom code from 
