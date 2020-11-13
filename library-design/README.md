@@ -9,9 +9,9 @@ To computationally design the oligonucleotide sequences used to generate the Spi
 **1. Optimize sequences**
 First, I took fasta files containing the sequences of the proteins I would like to generate oligos. I took the entire sequence of S1 and S2 from the Wuhan Hu-1 strain of SARS-CoV-2. I additionally generated sequences in the background of the D614G mutation, and called this S1alt. These files are located within the `sequences` directory:
 
-*`SARSCoV2_S1_seq.fasta`
-*`SARSCoV2_S2_seq.fasta`
-*`SARSCoV2_S1alt_seq.fasta`
+* `SARSCoV2_S1_seq.fasta`
+* `SARSCoV2_S2_seq.fasta`
+* `SARSCoV2_S1alt_seq.fasta`
 
 These sequences served as the input for the `DNAChisel_spike_optimization.py` script within the `optimization` directory. This script was modified from the [DnaChisel](https://github.com/Edinburgh-Genome-Foundry/DnaChisel) library. The optimized sequence outputs were made into new .fasta files, also within the `sequences` directory:
 
