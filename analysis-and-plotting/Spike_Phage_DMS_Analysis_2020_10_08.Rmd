@@ -6,6 +6,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+
 # Description of code
 This code was written by Meghan Garrett to generate plots for the manuscript "High resolution profiling of pathways of escape for SARS-CoV-2 spike-binding antibodies" by Garrett et al. The required files for this analysis are:
 * A curated .csv file (Curated_Samples_Phage_DMS_Analysis.csv) containing the enrichment values and scaled differential selection values from Phage-DMS experiments with either COVID patient plasma or healthy serum. 
