@@ -1,9 +1,9 @@
-#Spike Phage-DMS library design
+# Spike Phage-DMS library design
 
-##Contents of this directory
+## Contents of this directory
 This directory contains the sequences and scripts used to generate the Spike Phage-DMS library used in this study. 
 
-##Generating Spike Phage-DMS peptide sequences
+## Generating Spike Phage-DMS peptide sequences
 To computationally design the oligonucleotide sequences used to generate the Spike Phage-DMS library, I performed the following two steps:
 
 **1. Optimize sequences**
