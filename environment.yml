@@ -1,4 +1,4 @@
-name: pan-cov-manuscript
+name: Spike-Phage-DMS
 channels:
   - anaconda
   - bioconda
