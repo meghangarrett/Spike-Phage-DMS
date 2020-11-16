@@ -39,28 +39,8 @@ the output of the pipeline is a file, `phip_data/pan-cov-ds.phip`
 containing sample and peptide metadata tied to the raw counts matrix like so:
 
 <p align="center">
-  <img src="cartoons/Xarray.png" width="350">
+  <img src="figures/Xarray.png" width="350">
 </p>
 
 With the colored columns representing coordinate dimensions and the grey squares representing data arrays
 organized by respective shared dimensions.
-
-
-### library design
-
-The pan-human CoV was created using a script that can also be found 
-[here](https://github.com/jbloomlab/phipseq_oligodesign) 
-and was written by Kate H.D Crawford in the Bloom lab.
-The fasta files needed to create the library are located in the library-design
-directory. simply run
-
-```
-cd library-design
-tar -xvf prot_files.tar
-```
-
-Next, to create the library, make sure your environment is activated then
-
-```
-python phip_seq_oligodesign.py prot_files out_dir protein
-```
