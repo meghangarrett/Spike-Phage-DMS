@@ -35,7 +35,7 @@
 
     "num_mm" : 0,
 
-    "counts_matrix_prefix" : "10-13-20-",
+    "counts_matrix_prefix" : "phage-dms-",
     
     "tech_rep_agg_func" : "mean",
 
