@@ -1,0 +1,154 @@
+---
+title: "Paired neut data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##This is code used to generate plots of neutralization data
+
+Import libraries
+```{r}
+library(tidyverse)
+library(ggpubr)
+```
+
+
+Import NT50 data
+```{r}
+NT50_data <- read_csv("2021.02.15_NT50_S2AUC_summary.csv")
+
+NT50_data$sample<-factor(NT50_data$sample, levels=c('patient 1','patient 2','patient 3','patient 4','patient 5', 'patient 6', 'patient 7', 'patient 8', 'patient 9', 'patient 10', 'patient 11', 'patient 12', 'patient 13', 'patient 14', 'patient 15', 'patient 16', 'patient 17', 'patient 18'))
+
+
+```
+
+```{r}
+NT50_data <- NT50_data %>% 
+  pivot_wider(names_from = condition, values_from = NT50) %>%
+  group_by(sample) %>%
+  mutate(percentage = (depleted / mock)*100) %>%
+  mutate(percentage = case_when(depleted == 20 ~ 0, 
+                                depleted != 20 ~ percentage)) %>%
+  pivot_longer(cols=c(mock, depleted), names_to = "condition", values_to = "NT50") %>%
+  mutate(percentage = signif(percentage, 2)) %>%
+  mutate(percentage = paste(percentage, "%"))
+```
+
+
+Now plot as paired dot plot
+```{r}
+NT50_paired_plot <- ggplot(NT50_data, aes(x = NT50, y = reorder(sample, desc(sample)))) +
+  geom_line(aes(group = sample)) +
+  geom_point(aes(color = condition, fill=condition), size=3) +
+  theme_classic() +
+  geom_vline(xintercept = 20, linetype="dotted", 
+                color = "red", alpha=0.5, size=1) +
+  theme(axis.title.y=element_blank(), legend.position = "bottom", legend.title = element_blank()) +
+  scale_x_log10(breaks = 10^(-1:6)) +
+  annotation_logticks(sides="b") +
+  geom_text(data=subset(NT50_data, condition == "depleted"), aes(x = 1600, label = percentage, color=condition)) +
+    scale_color_manual(values=c( "darkgrey", "#C77CFF")) 
+  
+  
+
+print(NT50_paired_plot)
+
+ggsave("NT50_paired_plot.jpg", NT50_paired_plot, width=7, height=6)
+```
+
+Now correlate the residual (non-RBD) NT50 values with the Ab binding to FP and HR2 regions.
+First need to import the Phage-DMS data.
+```{r}
+binding_data <- read_csv("Spike_DMS_binding_data.csv") %>%
+  mutate(sample = paste ("patient", participant_ID, sep = " "))
+```
+
+Now join the two tables by "sample" column
+```{r}
+correlation_data <- full_join(NT50_data, binding_data)
+```
+
+
+First, plot correlation between binding to **FP** and **HR2** epitope and residual NT50 value
+```{r}
+neut_correlation <- correlation_data %>%
+  filter(condition == "depleted") %>%
+  filter(!is.na(epitope)) %>% 
+  ggscatter(x = "NT50", y = "enrichment", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "NT50 of RBD-depleted plasma", ylab = "Max enrichment of peptides within epitope region", cor.coef.size = 6) +
+  facet_wrap(~epitope, drop=T) +
+  scale_x_log10(breaks = 10^(-1:6)) +
+  annotation_logticks(sides="b") +
+  theme_classic(base_size = 18)
+
+print(neut_correlation)
+
+ggsave("correlation_residual_NT50_enrichment.jpg", neut_correlation, width = 10, height = 6)
+```
+
+
+Now correlate the binding to **FP** and **HR2** epitope and S2 AUC
+```{r}
+S2_AUC_correlation <- correlation_data %>%
+  filter(condition == "depleted") %>%
+  filter(!is.na(epitope)) %>% 
+  ggscatter(x = "S2_AUC", y = "enrichment", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "Binding activity (ELISA AUC)", ylab = "Max enrichment of peptides within epitope region", cor.coef.size = 6) +
+  facet_wrap(~epitope, drop=T)  +
+  theme_classic(base_size = 18)
+
+
+print(S2_AUC_correlation)
+
+ggsave("correlation_enrichment_S2AUC.jpg", S2_AUC_correlation, width = 10, height = 6)
+```
+Now correlate the residual NT50 and S2 AUC
+```{r}
+neut_S2_AUC_correlation <- correlation_data %>%
+  filter(condition == "depleted") %>%
+  filter(!is.na(epitope)) %>% 
+  ggscatter(x = "NT50", y = "S2_AUC", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "NT50 of RBD-depleted plasma", ylab = "S2 binding activity (ELISA AUC)", cor.coef.size = 6) +
+  scale_x_log10(breaks = 10^(-1:6)) +
+  annotation_logticks(sides="b") +
+  theme_classic(base_size = 18)
+
+print(neut_S2_AUC_correlation)
+
+ggsave("correlation_residual_NT50_S2AUC.jpg", neut_S2_AUC_correlation, width = 10, height = 6)
+```
+Now, need to import the RBD AUC data set
+```{r}
+RBD_data <- read_csv("2021.02.15_NT50_RBDAUC_summary.csv")
+
+RBD_data$sample<-factor(RBD_data$sample, levels=c('patient 1','patient 2','patient 3','patient 4','patient 5', 'patient 6', 'patient 7', 'patient 8', 'patient 9', 'patient 10', 'patient 11', 'patient 12', 'patient 13', 'patient 14', 'patient 15', 'patient 16', 'patient 17', 'patient 18'))
+
+
+```
+
+
+Now correlate the residual NT50 and RBD AUC
+```{r}
+neut_RBD_AUC_correlation <- RBD_data %>%
+  filter(condition == "depleted") %>%
+  ggscatter(x = "NT50", y = "RBD_AUC", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "NT50 of RBD-depleted plasma", ylab = "Residual RBD binding activity (ELISA AUC)", cor.coef.size = 6) +
+  scale_x_log10(breaks = 10^(-1:6)) +
+  annotation_logticks(sides="b") +
+  theme_classic(base_size = 18)
+
+print(neut_RBD_AUC_correlation)
+
+ggsave("correlation_residual_NT50_S2RBD.jpg", neut_RBD_AUC_correlation, width = 10, height = 6)
+```

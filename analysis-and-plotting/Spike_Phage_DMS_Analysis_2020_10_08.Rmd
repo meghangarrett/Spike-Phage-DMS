@@ -23,6 +23,8 @@ library(cowplot)
 library(scales)
 library(rstatix)
 library(coin)
+library(tidyselect)
+library(ggrepel)
 ```
 
 ## Import and reshape data
@@ -82,7 +84,7 @@ Color_ID <- c("1" = "#e0366f","2" = "#5eba48", "3" = "#7c5cd1","4" = "#adb73d", 
 plot <- corr_table %>% ggplot(aes(x = patient_status, y=replicate_correlation, color = as.factor(participant_ID), shape = patient_status)) +
   geom_hline(yintercept=0.5, linetype="dashed") +
   geom_jitter(size=3, width=0.1) +
-  theme_classic(base_size = 14) +
+  theme_classic(base_size = 18) +
   expand_limits(y=c(0,1)) +
   xlab("") + 
   ylab("Pearson correlation (R) between biological replicates of a sample") +
@@ -137,7 +139,7 @@ corr_table <- corr_table %>% filter(r != "NA") %>% print()
 dp <- corr_table %>% ggplot(aes(x=pair, y=r)) +
   geom_boxplot(width=.6) +
   geom_jitter(position=position_jitter(0.2))+
-  theme_classic(base_size = 14)+
+  theme_classic(base_size = 18)+
   theme(legend.position = "none")  +
   xlab("") +
   ylab("Pearson Correlation (R)") + 
@@ -176,10 +178,10 @@ plot <- table %>% ggplot(aes(x=r, y=replicate_correlation)) +
   geom_point(aes(shape = sample_day, color=participant_ID), size=3) +
   scale_color_manual(values = Color_ID) + 
   geom_smooth(method='lm', color="black", se=FALSE, size=1) +
-  theme_classic(base_size = 14) +
+  theme_classic(base_size = 18) +
   stat_cor() + 
   xlab("Correlation (R) between paired samples") + 
-  ylab("Correlation (R) between biological replicates of a sample") +
+  ylab("Correlation (R) between biological\nreplicates of a sample") +
   labs(shape = "Sample timepoint", color = "Patient ID") +
   scale_shape(labels=c("30 day p.s.o.","60 day p.s.o."))
   
@@ -207,8 +209,8 @@ plota <- master %>%
   filter(is_wt == TRUE) %>%
   ggplot( aes(x=Correct_Loc, y=enrichment, color=factor(participant_ID))) + 
     geom_line(alpha=0.8) + 
-    theme_classic(base_size = 20) +
-    theme(legend.position = "none", plot.margin = unit(c(0, 0, 0, 0), "cm"), strip.background = element_blank(), strip.text.x = element_text(face="bold", size = 20), panel.border = element_rect(colour = "black", fill=NA, size=1)) +
+    theme_classic(base_size = 24) +
+    theme(legend.position = "none", plot.margin = unit(c(0, 0, 0, 0), "cm"), strip.background = element_blank(), strip.text.x = element_text(face="bold", size = 24), panel.border = element_rect(colour = "black", fill=NA, size=1)) +
     facet_wrap(~patient_status, ncol=1, labeller = labeller(patient_status = ID.labs)) +
   xlab("") +
   ylab("")+
@@ -235,8 +237,8 @@ plotb <- master %>%
   filter(is_wt == TRUE) %>%
   ggplot( aes(x=Correct_Loc, y=enrichment, color=factor(participant_ID))) + 
     geom_line(alpha=0.8) + 
-    theme_classic(base_size = 20) +
-    theme(legend.position = "none", plot.margin = unit(c(0, 0, 0, 0), "cm"), strip.background = element_blank(), strip.text.x = element_text(face="bold", size = 20), panel.border = element_rect(colour = "black", fill=NA, size=1)) +
+    theme_classic(base_size = 24) +
+    theme(legend.position = "none", plot.margin = unit(c(0, 0, 0, 0), "cm"), strip.background = element_blank(), strip.text.x = element_text(face="bold", size = 24), panel.border = element_rect(colour = "black", fill=NA, size=1)) +
     facet_wrap(~patient_status, ncol=1, labeller = labeller(patient_status = ID.labs)) +
   xlab("") +
   ylab("") +
@@ -261,7 +263,7 @@ plotb <- master %>%
 plot <- plot_grid(plota, plotb, align = "v", nrow = 2)
 
 #Annotate the plot with x axis and y axis labels
-plot <- annotate_figure(plot, bottom = text_grob("SARS-CoV-2 S Protein Position", size = 20), left = text_grob("Enrichment of WT Peptides", size = 18, rot = 90))
+plot <- annotate_figure(plot, bottom = text_grob("SARS-CoV-2 S Protein Position", size = 24), left = text_grob("Enrichment of WT Peptides", size = 24, rot = 90))
 
 #Get legend
 legend <- get_legend(plota + theme(legend.position="right") + labs(color = "Patient ID"))
@@ -897,13 +899,17 @@ GISAID_scatterplot <- master_averaged %>%
   filter(!is.na(avg_scaled_diff_sel)) %>%
   ggplot(aes(x=site_mut_entropy, y=avg_scaled_diff_sel, color=epitope)) +
   geom_point(alpha=0.5, size=3) +
-  scale_x_continuous(trans='log10') +
-  facet_wrap(~participant_ID,  nrow=3) +
+  scale_x_log10(breaks = trans_breaks("log10", function(x) 10^x),
+              labels = trans_format("log10", math_format(10^.x))) + 
+  facet_wrap(~participant_ID,  nrow=3, scales="free_y") +
   theme_classic(base_size = 20) +
   theme(strip.background = element_blank(), strip.text.x = element_text(face="bold", size = 18), panel.border = element_rect(colour = "black", fill=NA, size=1), legend.position = "bottom") +
   xlab("Site mutational entropy") +
   ylab("Scaled differential selection, averaged by site") +
-  scale_color_manual(name="Location of site", breaks=c("FP epitope", "linker region epitope", "HR2 epitope", "other"), values=c( "green", "orange", "red", "black")) 
+  scale_color_manual(name="Location of site", breaks=c("FP epitope", "linker region epitope", "HR2 epitope", "other"), values=c( "green", "orange", "red", "black")) +
+  geom_vline(xintercept = 0.02, linetype="dotted", 
+                color = "grey", alpha=0.7, size=1.5) +
+  geom_text_repel(data=subset(master_averaged, avg_scaled_diff_sel < -20 & site_mut_entropy >= 0.02), nudge_x = 0.01, nudge_y = -2,  aes(label = Correct_Loc, color=epitope)) 
 
 
 dir <- "GSIAID_plots/"
@@ -914,55 +920,89 @@ ggsave(plot_name, GISAID_scatterplot, width = 18, height = 10)
 
 print(GISAID_scatterplot)
 ```
+Now, average the differential selection values by site, across all patients, and plot aggregated data
+```{r}
+diffsel_averaged <- master_averaged %>% 
+  group_by(Correct_Loc) %>%
+  summarize(avg_all_scaled_diff_sel = mean(avg_scaled_diff_sel, na.rm=T)) %>%
+  ungroup()
+```
+
+Add back in site mut entropy values, and epitope labels
+```{r}
+diffsel_averaged <- left_join(diffsel_averaged, GISAID_table) %>%
+  mutate(epitope = case_when(
+    Correct_Loc %in% 807:837 ~ "FP epitope", 
+    Correct_Loc %in% 1135:1162 ~ "linker region epitope",
+    Correct_Loc %in% 1163:1193 ~ "HR2 epitope", 
+    TRUE ~ "other"
+  ))
+
+#Now refactor the epitope labels
+diffsel_averaged$epitope <- factor(diffsel_averaged$epitope, levels = c("FP epitope", "linker region epitope", "HR2 epitope", "other"))
+```
+
+
+
+Now plot comparison between differential selection and mutational entropy, averaged across all patients
+```{r}
+GISAID_scatterplot_avg <- diffsel_averaged %>%
+  ggplot(aes(x=site_mut_entropy, y=avg_all_scaled_diff_sel, color=epitope)) +
+  geom_point(alpha=0.5, size=3) +
+   scale_x_log10(breaks = trans_breaks("log10", function(x) 10^x),
+              labels = trans_format("log10", math_format(10^.x))) + 
+  theme_classic(base_size = 20) +
+  theme(strip.background = element_blank(), strip.text.x = element_text(face="bold", size = 18), panel.border = element_rect(colour = "black", fill=NA, size=1), legend.position = "bottom") +
+  xlab("Site mutational entropy") +
+  ylab("Scaled differential selection, averaged by site") +
+  scale_color_manual(name="Location of site", breaks=c("FP epitope", "linker region epitope", "HR2 epitope", "other"), values=c( "green", "orange", "red", "black")) +
+  geom_vline(xintercept = 0.02, linetype="dotted", 
+                color = "grey", alpha=0.5, size=1.5) +
+  geom_text_repel(data=subset(diffsel_averaged, avg_all_scaled_diff_sel < -20 & site_mut_entropy >= 0.02), nudge_x = 0.01, nudge_y = -2,  aes(label = Correct_Loc, color=epitope)) 
+
+
+dir <- "GSIAID_plots/"
+  
+plot_name <- paste(dir, "mut_entropy_all_sites_sumscaleddiffsel_avg.jpg", sep = "")
+
+ggsave(plot_name, GISAID_scatterplot_avg, width = 10, height = 8)
+
+print(GISAID_scatterplot_avg)
+
+```
+
+
 
 **Plot of all commonly circulating Spike mutants and their scaled diff sel values**
 
 Will take the scaled diff sel values of the the mutants and compare against example mutants
+First need to get data from LANL on the most common mutants
 ```{r}
+GISIAD_data <- read_csv("sites_common_mutations.csv")
 
-GISIAD_data <- master %>%
-  mutate(GISAIDmutants = case_when(
-    Correct_Loc == "5" & aa_sub == "F" ~ "variant", 
-    Correct_Loc == "18" & aa_sub == "F" ~ "variant",
-    Correct_Loc == "21" & aa_sub == "I" ~ "variant", 
-    Correct_Loc == "70" & aa_sub == "I" ~ "variant",
-    Correct_Loc == "80" & aa_sub == "Y" ~ "variant",
-    Correct_Loc == "98" & aa_sub == "F" ~ "variant",
-    Correct_Loc == "222" & aa_sub == "V" ~ "variant", 
-    Correct_Loc == "253" & aa_sub == "G" ~ "variant",
-    Correct_Loc == "262" & aa_sub == "S" ~ "variant",
-    Correct_Loc == "272" & aa_sub == "L" ~ "variant",
-    Correct_Loc == "439" & aa_sub == "K" ~ "variant",
-    Correct_Loc == "477" & aa_sub == "N" ~ "variant", 
-    Correct_Loc == "614" & aa_sub == "G" ~ "variant",
-    Correct_Loc == "723" & aa_sub == "I" ~ "variant",
-    Correct_Loc == "936" & aa_sub == "Y" ~ "variant",
-    Correct_Loc == "1163" & aa_sub == "Y" ~ "variant",
-    Correct_Loc == "1167" & aa_sub == "V" ~ "variant")) %>% 
+GISIAD_data <- GISIAD_data %>% 
+  group_by(pos) %>%
+  top_n(1, global_frequency) %>%
+  filter(mut != "-") %>%
+  ungroup() %>%
+  #select the top 20 most common mutants
+  top_n(20, global_frequency) %>%
+  mutate(label = paste(ori, pos, mut, sep="")) %>%
+  mutate(GISAIDmutants = "variant") %>%
+  select(aa_sub = mut, Correct_Loc = pos, GISAIDmutants, label) %>%
+  mutate(label = factor(label, label))
+  
+```
+Now make new table with diff sel data
+```{r}
+GISIAD_data <- left_join(master, GISIAD_data) %>% 
   filter(!is.na(GISAIDmutants )) %>% 
   filter(Protein != "S1D614G") %>% 
-  filter(patient_status == "conv outpatient 60d") %>%
-  mutate(label = case_when(
-    Correct_Loc == "5" ~ "L5F", 
-    Correct_Loc == "18" ~ "L18F",
-    Correct_Loc == "21" ~ "R21I",
-    Correct_Loc == "70" ~ "V70I",
-    Correct_Loc == "80" ~ "D80Y",
-    Correct_Loc == "98" ~ "S98F",
-    Correct_Loc == "222" ~ "A222V",
-    Correct_Loc == "253" ~ "D253G",
-    Correct_Loc == "262" ~ "A262S",
-    Correct_Loc == "272" ~ "P272L",
-    Correct_Loc == "439" ~ "N439K",
-    Correct_Loc == "477" ~ "S477N", 
-    Correct_Loc == "614" ~ "D614G",
-    Correct_Loc == "723" ~ "T723I",
-    Correct_Loc == "936" ~ "D936Y",
-    Correct_Loc == "1163" ~ "D1163Y", 
-    Correct_Loc == "1167" ~ "G1167V"
-  )) %>%
-  mutate(label = fct_relevel(label, "L5F", "L18F", "R21I", "V70I", "D80Y","S98F", "A222V",  "D253G", "A262S", "P272L", "N439K", "S477N", "D614G", "T723I", "D936Y", "D1163Y", "G1167V"))
+  filter(patient_status == "conv outpatient 60d")
+```
 
+Now plot the scaled diff sel values for commonly found variants
+```{r}
 plot1 <- GISIAD_data %>% 
   ggplot(aes(x = reorder(label, desc(label)), y=scaled_diff_sel, color = participant_ID)) +
   geom_jitter(size=3, width=0.1) +
@@ -982,9 +1022,9 @@ dir <- "GSIAID_plots/"
   
 plot_name <- paste(dir, "mutation_level_comparison_GISAIDmutants_scaleddiffsel.jpg", sep = "")
 
-ggsave(plot_name, plot1, width = 6, height = 6)
-
+ggsave(plot_name, plot1, width = 6, height = 7)
 ```
+
 
 Now plot selected mutants found by Phage-DMS
 ```{r}
@@ -1040,7 +1080,7 @@ dir <- "GSIAID_plots/"
   
 plot_name <- paste(dir, "mutation_level_comparison_scaleddiffsel.jpg", sep = "")
 
-ggsave(plot_name, plot, width = 8, height = 10)
+ggsave(plot_name, plot, width = 8, height = 11)
 ```
 
 
@@ -1066,5 +1106,98 @@ dms_view_data <- dms_view_data %>%
 
 #Now export this to a csv
 write.csv(dms_view_data,file = "dms-view/Spike_DMS_view_data.csv")
+```
+
+##Also, export WT binding data to correlate with neutralization data
+First need to extract the max binding enrichment of WT peptides in the FP and HR2 regions, then export to folder with neutralization data
+```{r}
+binding_data <- master %>% 
+  filter(is_wt == TRUE) %>%
+  mutate(epitope = case_when(
+    Correct_Loc %in% 807:837 ~ "FP region", 
+    Correct_Loc %in% 1135:1193 ~ "HR2 region",
+    TRUE ~ "other")) %>%
+  filter(epitope != "other") %>%
+  filter(sample_day == "30d") %>%
+  group_by(participant_ID, epitope) %>%
+  top_n(1, enrichment) %>%
+  select(participant_ID, epitope, enrichment)
+
+#Now export this to a csv
+write.csv(binding_data,file = "neutralization_data/Spike_DMS_binding_data.csv")
+
+```
+
+##Now, import AUC data so that I can plot it.
+```{r}
+AUC_data <- read_csv("ELISA_AUC_data.csv")
+
+AUC_data$participant_ID <- as.factor(AUC_data$participant_ID)
+
+AUC_data <- AUC_data %>% mutate(participant_ID = fct_relevel(participant_ID, "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18"))
+```
+
+Now plot paired plot of RBD ELISA AUC
+```{r}
+dir.create("ELISA_plots")
+
+plot_RBD <- AUC_data %>%
+  pivot_wider(names_from = condition, values_from= AUC) %>%
+  filter(antigen == "RBD") %>%
+  ggpaired(cond1="mock", cond2="depleted", color="participant_ID", line.color = "gray", line.size = 0.4, width=0, point.size = 3) +
+  theme_classic(base_size = 20) +
+  scale_color_manual(values = Color_ID)  +
+  ylab("Binding activity (ELISA AUC)") +
+  ggtitle("RBD") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none", axis.title.x=element_blank()) +
+  geom_hline(yintercept=0.059, linetype="dashed") 
+
+print(plot_RBD)
+
+```
+Now make plot with just Spike
+```{r}
+plot_Spike <- AUC_data %>%
+  pivot_wider(names_from = condition, values_from= AUC) %>%
+  filter(antigen == "Spike") %>%
+  ggpaired(cond1="mock", cond2="depleted", color="participant_ID", line.color = "gray", line.size = 0.4, width=0, point.size = 3) +
+  theme_classic(base_size = 20) +
+  scale_color_manual(values = Color_ID)  +
+  ylab("Binding activity (ELISA AUC)") +
+  ggtitle("Spike") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none", axis.title.x=element_blank(),  axis.title.y=element_blank())+
+  geom_hline(yintercept=1.08, linetype="dashed")  
+
+print(plot_Spike)
+
+```
+Now make plot with just S2
+```{r}
+plot_S2 <- AUC_data %>%
+  filter(antigen == "S2") %>%
+  ggplot(aes(x=condition, y=AUC, color=participant_ID)) +
+  geom_jitter(size = 3, width = 0.2) +
+  theme_classic(base_size = 20) +
+  scale_color_manual(values = Color_ID)  +
+  ylab("Binding activity (ELISA AUC)") +
+  ggtitle("S2") +
+  theme(plot.title = element_text(hjust = 0.5), axis.title.x=element_blank(),  axis.title.y=element_blank())+
+  geom_hline(yintercept=0.058, linetype="dashed")  +
+  labs(color = "Patient ID") +
+  guides(col = guide_legend(ncol = 2))
+
+print(plot_S2)
+
+
+
+```
+
+```{r}
+#first combine the COVID patient plots
+plot_AUC <- plot_grid(plot_RBD, plot_Spike, plot_S2, nrow = 1)
+
+dir <- "ELISA_plots/"
+plot_name <- paste(dir, "ELISA_AUC_plots.jpg", sep = "")
+ggsave(plot_name, plot_AUC, width = 14, height = 6)
 ```
 
